@@ -13,7 +13,8 @@ class ProductsSeeder extends Seeder
      */
     public function run(): void
     {
-        ProductsFactory::new()
-        ->count(10)->create();
+        // ProductsFactory::new()
+        // ->count(10)->create();
+        
     }
 }
