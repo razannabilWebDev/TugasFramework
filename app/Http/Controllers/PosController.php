@@ -6,106 +6,92 @@ use App\Models\Product;
 use App\Models\Transaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
+use App\Http\Requests\StorePosRequest;
+
 
 class PosController extends Controller
 {
     /**
      * Halaman kasir: pilih produk dan jumlah, lalu bayar.
      */
+
     public function index()
     {
-        $products = Product::with('category')
+        $products = Product::where('stock', '>', 0)
             ->orderBy('name')
-            ->get();
+            ->get(['id', 'code', 'name', 'price', 'stock', 'unit']);
 
         return view('pos.index', compact('products'));
     }
 
+
+
     /**
      * Simpan transaksi dan kurangi stok produk.
      */
-    public function store(Request $request)
+
+    public function store(StorePosRequest $request)
     {
-        $data = $request->validate([
-            'items' => 'required|array|min:1',
-            'items.*.product_id' => 'required|exists:products,id',
-            'items.*.qty' => 'required|integer|min:1',
-            'pay' => 'required|integer|min:0',
-        ], [
-            'items.required' => 'Keranjang masih kosong, pilih produk terlebih dahulu.',
-        ]);
+        $transaction = DB::transaction(function () use ($request) {
+            $total = 0;
+            $details = [];
 
-        try {
-            $transaction = DB::transaction(function () use ($data) {
-                $total = 0;
-                $lines = [];
+            foreach ($request->items as $item) {
+                // lockForUpdate mengunci baris produk agar tidak dibaca kasir lain
+                // secara bersamaan selagi stok sedang diperbarui.
+                $product = Product::lockForUpdate()->findOrFail($item['product_id']);
 
-                foreach ($data['items'] as $item) {
-                    $product = Product::lockForUpdate()->findOrFail($item['product_id']);
-                    $qty = (int) $item['qty'];
-
-                    if ($product->stock < $qty) {
-                        throw new \RuntimeException("Stok {$product->name} tidak mencukupi (tersisa {$product->stock}).");
-                    }
-
-                    $subtotal = $product->price * $qty;
-                    $total += $subtotal;
-
-                    $lines[] = [
-                        'product' => $product,
-                        'qty' => $qty,
-                        'price' => $product->price,
-                        'subtotal' => $subtotal,
-                    ];
+                if ($product->stock < $item['qty']) {
+                    throw new \Exception("Stok {$product->name} tidak mencukupi.");
                 }
 
-                if ($data['pay'] < $total) {
-                    throw new \RuntimeException('Uang bayar kurang dari total belanja.');
-                }
+                $subtotal = $product->price * $item['qty'];
+                $total += $subtotal;
 
-                $transaction = Transaction::create([
-                    'invoice_number' => 'INV-'.now()->format('YmdHis').'-'.Str::upper(Str::random(4)),
-                    'user_id' => auth()->id(),
-                    'total' => $total,
-                    'pay' => $data['pay'],
-                    'change' => $data['pay'] - $total,
-                ]);
+                $details[] = [
+                    'product_id' => $product->id,
+                    'qty' => $item['qty'],
+                    'price' => $product->price,
+                    'subtotal' => $subtotal,
+                ];
 
-                foreach ($lines as $line) {
-                    $transaction->details()->create([
-                        'product_id' => $line['product']->id,
-                        'qty' => $line['qty'],
-                        'price' => $line['price'],
-                        'subtotal' => $line['subtotal'],
-                    ]);
+                $product->decrement('stock', $item['qty']);
+            }
 
-                    $line['product']->decrement('stock', $line['qty']);
-                }
+            if ($request->pay < $total) {
+                throw new \Exception('Nominal bayar kurang dari total belanja.');
+            }
 
-                return $transaction;
-            });
-        } catch (\RuntimeException $e) {
-            return back()->withInput()->withErrors(['items' => $e->getMessage()]);
-        }
+            $trx = Transaction::create([
+                'invoice_number' => 'INV-' . now()->format('Ymd') . '-' . str_pad(Transaction::whereDate('created_at', now())->count() + 1, 4, '0', STR_PAD_LEFT),
+                'user_id' => auth()->id(),
+                'total' => $total,
+                'pay' => $request->pay,
+                'change' => $request->pay - $total,
+            ]);
 
-        return redirect()->route('pos.index')->with(
-            'success',
-            "Transaksi {$transaction->invoice_number} berhasil. Kembalian: Rp"
-                .number_format($transaction->change, 0, ',', '.')
-        );
+            $trx->details()->createMany($details);
+
+            return $trx;
+        });
+
+        return redirect()->route('pos.struk', $transaction)->with('success', 'Transaksi berhasil disimpan.');
     }
+
+    /**
+     * Cetak struk transaksi.
+     */
+
+    public function struk(Transaction $transaction)
+    {
+        $transaction->load('details.product', 'user');
+        return view('pos.struk', compact('transaction'));
+    }
+
+
 
     /**
      * Riwayat transaksi.
      */
-    public function history()
-    {
-        $transactions = Transaction::with('user')
-            ->withCount('details')
-            ->latest()
-            ->paginate(10);
-
-        return view('pos.history', compact('transactions'));
-    }
+    public function history() {}
 }

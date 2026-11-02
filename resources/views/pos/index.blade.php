@@ -1,127 +1,123 @@
 <x-app-layout>
     <x-slot name="header">
-        <h2 class="font-semibold text-xl text-gray-800">Kasir</h2>
+        <h2 class="font-semibold text-xl text-gray-800">Transaksi Penjualan</h2>
     </x-slot>
 
-    <div class="py-12">
-        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 space-y-4">
+    <div class="py-8"
+        x-data="posCart({{ $products->toJson() }})">
+        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 grid grid-cols-3 gap-6">
 
-            @if (session('success'))
-            <div class="p-3 bg-green-100 text-green-700 rounded-md text-sm">{{ session('success') }}</div>
-            @endif
+            <!-- Kolom kiri: pencarian & daftar produk -->
+            <div class="col-span-2">
+                <x-card>
+                    <input type="text" x-model="keyword" placeholder="Cari nama atau kode produk..."
+                        class="w-full rounded-md border-gray-300 mb-4">
 
-            @if ($errors->any())
-            <div class="p-3 bg-red-100 text-red-700 rounded-md text-sm">
-                <ul class="list-disc list-inside">
-                    @foreach ($errors->all() as $error)
-                    <li>{{ $error }}</li>
-                    @endforeach
-                </ul>
-            </div>
-            @endif
-
-            <x-card>
-                <form action="{{ route('pos.store') }}" method="POST" id="pos-form" class="space-y-4">
-                    @csrf
-
-                    <table class="min-w-full divide-y divide-gray-200">
-                        <thead class="bg-gray-50">
-                            <tr>
-                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500">Produk</th>
-                                <th class="px-4 py-2 text-right text-xs font-medium text-gray-500">Harga</th>
-                                <th class="px-4 py-2 text-center text-xs font-medium text-gray-500">Stok</th>
-                                <th class="px-4 py-2 text-center text-xs font-medium text-gray-500">Jumlah</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-gray-100">
-                            @forelse ($products as $product)
-                            <tr class="@if ($product->stock == 0) bg-red-50 @endif">
-                                <td class="px-4 py-2 text-sm">
-                                    {{ $product->name }}
-                                    <span class="text-gray-400 text-xs block">{{ $product->code }} &middot;
-                                        {{ $product->category?->name }}</span>
-                                </td>
-                                <td class="px-4 py-2 text-sm text-right">
-                                    Rp{{ number_format($product->price, 0, ',', '.') }}
-                                </td>
-                                <td class="px-4 py-2 text-sm text-center">{{ $product->stock }}</td>
-                                <td class="px-4 py-2 text-sm text-center">
-                                    <input type="hidden" name="items[{{ $loop->index }}][product_id]"
-                                        value="{{ $product->id }}">
-                                    <input type="number" name="items[{{ $loop->index }}][qty]" min="0" value="0"
-                                        data-price="{{ $product->price }}" data-stock="{{ $product->stock }}"
-                                        class="qty-input w-20 rounded-md border-gray-300 text-center"
-                                        @disabled($product->stock == 0)>
-                                </td>
-                            </tr>
-                            @empty
-                            <tr>
-                                <td colspan="4" class="px-4 py-6 text-center text-gray-500">Belum ada produk.</td>
-                            </tr>
-                            @endforelse
-                        </tbody>
-                    </table>
-
-                    <div class="flex flex-wrap items-end justify-end gap-4 border-t pt-4">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">Total</label>
-                            <p id="total" class="text-lg font-semibold">Rp0</p>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">Uang Bayar</label>
-                            <input type="number" name="pay" id="pay" min="0" value="{{ old('pay', 0) }}"
-                                class="mt-1 block w-40 rounded-md border-gray-300">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">Kembalian</label>
-                            <p id="change" class="text-lg font-semibold">Rp0</p>
-                        </div>
-                        <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-md">
-                            Proses Transaksi
-                        </button>
+                    <div class="grid grid-cols-3 gap-3 max-h-[420px] overflow-y-auto">
+                        <template x-for="product in filteredProducts()" :key="product.id">
+                            <button type="button" @click="addItem(product)"
+                                class="border rounded-md p-3 text-left hover:bg-indigo-50">
+                                <p class="text-sm font-medium" x-text="product.name"></p>
+                                <p class="text-xs text-gray-500" x-text="'Stok: ' + product.stock"></p>
+                                <p class="text-sm font-semibold text-indigo-600" x-text="formatRupiah(product.price)"></p>
+                            </button>
+                        </template>
                     </div>
-                </form>
-            </x-card>
+                </x-card>
+            </div>
+
+            <!-- Kolom kanan: keranjang belanja -->
+            <div>
+                <x-card>
+                    <h3 class="font-semibold mb-3">Keranjang</h3>
+
+                    <form :action="'{{ route('pos.store') }}'" method="POST">
+                        @csrf
+                        <template x-for="(item, index) in cart" :key="item.id">
+                            <div class="flex items-center justify-between mb-2 text-sm">
+                                <div>
+                                    <p x-text="item.name"></p>
+                                    <p class="text-xs text-gray-500" x-text="formatRupiah(item.price) + ' x'"></p>
+                                </div>
+                                <input type="number" min="1" :max="item.stock" x-model.number="item.qty"
+                                    @input="clampQty(item)" class="w-16 rounded-md border-gray-300 text-center">
+                                <button type="button" @click="removeItem(index)" class="text-red-500 ml-2">&times;</button>
+
+                                <input type="hidden" :name="'items[' + index + '][product_id]'" :value="item.id">
+                                <input type="hidden" :name="'items[' + index + '][qty]'" :value="item.qty">
+                            </div>
+                        </template>
+
+                        <div class="border-t pt-3 mt-3 space-y-1">
+                            <div class="flex justify-between font-semibold">
+                                <span>Total</span>
+                                <span x-text="formatRupiah(total())"></span>
+                            </div>
+
+                            <label class="block text-sm mt-2">Bayar</label>
+                            <input type="number" name="pay" x-model.number="pay" min="0"
+                                class="w-full rounded-md border-gray-300">
+
+                            <div class="flex justify-between text-sm mt-1">
+                                <span>Kembalian</span>
+                                <span x-text="formatRupiah(change())"></span>
+                            </div>
+                        </div>
+
+                        <button type="submit" :disabled="cart.length === 0 || pay < total()"
+                            class="w-full mt-4 bg-indigo-600 text-white py-2 rounded-md disabled:opacity-50">
+                            Simpan Transaksi
+                        </button>
+                    </form>
+                </x-card>
+            </div>
         </div>
     </div>
 
     @push('scripts')
     <script>
-        (function () {
-            const inputs = document.querySelectorAll('.qty-input');
-            const totalEl = document.getElementById('total');
-            const changeEl = document.getElementById('change');
-            const payEl = document.getElementById('pay');
-
-            const rupiah = (value) => 'Rp' + value.toLocaleString('id-ID');
-
-            function recalc() {
-                let total = 0;
-                inputs.forEach((input) => {
-                    total += (parseInt(input.value, 10) || 0) * (parseInt(input.dataset.price, 10) || 0);
-                });
-
-                const pay = parseInt(payEl.value, 10) || 0;
-                totalEl.textContent = rupiah(total);
-                changeEl.textContent = rupiah(Math.max(pay - total, 0));
-            }
-
-            inputs.forEach((input) => {
-                input.addEventListener('input', () => {
-                    const stock = parseInt(input.dataset.stock, 10) || 0;
-                    const qty = parseInt(input.value, 10) || 0;
-
-                    if (qty > stock) {
-                        input.value = stock;
+        function posCart(products) {
+            return {
+                products: products,
+                cart: [],
+                keyword: '',
+                pay: 0,
+                filteredProducts() {
+                    if (!this.keyword) return this.products;
+                    const k = this.keyword.toLowerCase();
+                    return this.products.filter(p =>
+                        p.name.toLowerCase().includes(k) || p.code.toLowerCase().includes(k)
+                    );
+                },
+                addItem(product) {
+                    const existing = this.cart.find(i => i.id === product.id);
+                    if (existing) {
+                        if (existing.qty < product.stock) existing.qty++;
+                        return;
                     }
-
-                    recalc();
-                });
-            });
-
-            payEl.addEventListener('input', recalc);
-            recalc();
-        })();
+                    this.cart.push({
+                        ...product,
+                        qty: 1
+                    });
+                },
+                clampQty(item) {
+                    if (item.qty < 1) item.qty = 1;
+                    if (item.qty > item.stock) item.qty = item.stock;
+                },
+                removeItem(index) {
+                    this.cart.splice(index, 1);
+                },
+                total() {
+                    return this.cart.reduce((sum, i) => sum + (i.price * i.qty), 0);
+                },
+                change() {
+                    return Math.max(this.pay - this.total(), 0);
+                },
+                formatRupiah(value) {
+                    return 'Rp' + Number(value || 0).toLocaleString('id-ID');
+                },
+            }
+        }
     </script>
     @endpush
 </x-app-layout>

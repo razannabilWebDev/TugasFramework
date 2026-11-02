@@ -6,32 +6,32 @@
                     class="font-semibold {{ request()->routeIs('dashboard') ? 'text-indigo-600' : 'text-gray-700' }}">
                     Dashboard
                 </a>
- 
+
                 @if (auth()->user()->role === 'admin')
-                    <a href="{{ route('categories.index') }}"
-                        class="{{ request()->routeIs('categories.*') ? 'text-indigo-600' : 'text-gray-500' }}">
-                        Kategori
-                    </a>
-                    <a href="{{ route('products.index') }}"
-                        class="{{ request()->routeIs('products.*') ? 'text-indigo-600' : 'text-gray-500' }}">
-                        Produk
-                    </a>
-                    <a href="{{ route('report.sales') }}"
-                        class="{{ request()->routeIs('report.sales') ? 'text-indigo-600' : 'text-gray-500' }}">
-                        Laporan
-                    </a>
+                <a href="{{ route('categories.index') }}"
+                    class="{{ request()->routeIs('categories.*') ? 'text-indigo-600' : 'text-gray-500' }}">
+                    Kategori
+                </a>
+                <a href="{{ route('products.index') }}"
+                    class="{{ request()->routeIs('products.*') ? 'text-indigo-600' : 'text-gray-500' }}">
+                    Produk
+                </a>
+                <a href="{{ route('report.sales') }}"
+                    class="{{ request()->routeIs('report.sales') ? 'text-indigo-600' : 'text-gray-500' }}">
+                    Laporan
+                </a>
                 @endif
- 
+
                 <a href="{{ route('pos.index') }}"
                     class="{{ request()->routeIs('pos.index') ? 'text-indigo-600' : 'text-gray-500' }}">
                     Transaksi
                 </a>
-                <a href="{{ route('pos.history') }}"
-                    class="{{ request()->routeIs('pos.history') ? 'text-indigo-600' : 'text-gray-500' }}">
+                <a href="{{ route('pos.index') }}"
+                    class="{{ request()->routeIs('pos.index') ? 'text-indigo-600' : 'text-gray-500' }}">
                     Riwayat Transaksi
                 </a>
             </div>
- 
+
             <div class="flex items-center space-x-4 text-sm">
                 <span class="text-gray-600">{{ auth()->user()->name }}</span>
                 <form action="{{ route('logout') }}" method="POST">
@@ -42,4 +42,3 @@
         </div>
     </div>
 </nav>
-
